@@ -1,0 +1,8 @@
+{
+  "name": "crypto-chat-back",
+  "version": "0.0.1",
+  "description": "Backend for CryptoChat",
+  "dependencies": {
+    "socket.io": "^2.0.4"
+  }
+}
