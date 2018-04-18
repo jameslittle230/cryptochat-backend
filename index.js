@@ -17,39 +17,37 @@ var db = new sqlite3.Database('./db/main.db');
 db.serialize(function() {
 
 	db.run(`CREATE TABLE if not exists messages (
-			message_id integer NOT NULL,
-			content blob NOT NULL,
-			sender_id integer NOT NULL,
-			recipient_id integer NOT NULL,
-			chat_id integer NOT NULL,
-			created_at text NOT NULL)`);
+			message_id   INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			content      BLOB    NOT NULL,
+			sender_id    INTEGER NOT NULL,
+			recipient_id INTEGER NOT NULL,
+			chat_id      INTEGER NOT NULL,
+			created_at   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
 
 	db.run(`CREATE TABLE if not exists chats (
-			chat_id integer NOT NULL,
-			sequence_number integer NOT NULL)`);
+			chat_id         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			sequence_number INTEGER NOT NULL)`);
 
 	db.run(`CREATE TABLE if not exists user_chat (
-			user_chat_id integer NOT NULL,
-			user_id integer NOT NULL,
-			chat_id integer NOT NULL)`);
+			user_chat_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			user_id      INTEGER NOT NULL,
+			chat_id      INTEGER NOT NULL)`);
 
 	db.run(`CREATE TABLE if not exists users (
-			user_id integer NOT NULL,
-			username string NOT NULL,
-			password string NOT NULL,
-			first_name string NOT NULL,
-			last_name string NOT NULL)`);
+			user_id    INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			username   TEXT    NOT NULL,
+			password   TEXT    NOT NULL,
+			first_name TEXT    NOT NULL,
+			last_name  TEXT    NOT NULL)`);
 
 	db.run(`CREATE TABLE if not exists keys (
-			key_id integer NOT NULL,
-			user_id integer NOT NULL,
-			public_key blob NOT NULL,
-			private_key_enc blob NOT NULL,
-			created_at text NOT NULL,
-			expired_at text)`);
+			key_id          INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+			user_id         INTEGER NOT NULL,
+			public_key      BLOB    NOT NULL,
+			private_key_enc BLOB    NOT NULL,
+			created_at      TEXT    NOT NULL    DEFAULT CURRENT_TIMESTAMP,
+			expired_at      TEXT)`);
 });
-
-db.close();
 
 console.log("Database schema written");
 
@@ -68,6 +66,12 @@ io.on('connection', function(socket){
 
 	socket.on('msg', function(msg){
 		console.log('message: ' + msg);
+
+		db.serialize(function() {
+			db.run(`INSERT INTO messages (content, sender_id, recipient_id, chat_id) 
+				                  values ("` + msg + `", 1, 2, 1)`);
+		});
+
 		io.emit('msg', msg);
 	});
 });
