@@ -26,7 +26,7 @@ db.serialize(function() {
 
 	db.run(`CREATE TABLE if not exists chats (
 			chat_id         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-			sequence_number INTEGER NOT NULL)`);
+			sequence_number INTEGER DEFAULT 0   NOT NULL)`);
 
 	db.run(`CREATE TABLE if not exists user_chat (
 			user_chat_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -47,13 +47,52 @@ db.serialize(function() {
 			private_key_enc BLOB    NOT NULL,
 			created_at      TEXT    NOT NULL    DEFAULT CURRENT_TIMESTAMP,
 			expired_at      TEXT)`);
-});
 
-console.log("Database schema written");
+	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("james", "", "James", "Little")`);
+	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("maddie", "", "Maddie", "Tucker")`);
+	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("danny", "", "Danny", "Little")`);
+
+	db.run(`INSERT INTO chats default values`);
+	db.run(`INSERT INTO chats default values`);
+	db.run(`INSERT INTO chats default values`);
+
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (0, 0)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 0)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 1)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 1)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 2)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (0, 2)`);
+
+	db.all(`SELECT * FROM chats`, function(err, data) {
+		console.log(data);
+	});
+});
 
 // API Endpoints
 
-app.get('/', (req, res) => res.send('Hello World!'))
+app.use(function(req, res, next) {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
+});
+
+app.get('/messages', function (req, res) {
+	console.log(req.query.recipient);
+	if(!req.query.recipient || !/^\d+$/.test(req.query.recipient)) {
+		res.send("recipient error");
+		return;
+	}
+
+	var r_id = req.query.recipient;
+	db.all(`SELECT * FROM messages WHERE recipient_id = ` + r_id, function(err, data) {
+		if(!err) {
+			console.log(data);
+			res.send(data);
+			return;
+		}
+	})
+	// res.send("asdf");
+});
 
 server.listen(8080);
 
@@ -65,6 +104,10 @@ io.on('connection', function(socket){
 	});
 
 	socket.on('msg', function(msg){
+		if(!/^[0-9a-fA-F]+$/.test(msg)) {
+			return;
+		}
+
 		console.log('message: ' + msg);
 
 		db.serialize(function() {
