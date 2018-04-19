@@ -90,8 +90,16 @@ app.get('/messages', function (req, res) {
 			res.send(data);
 			return;
 		}
-	})
-	// res.send("asdf");
+	});
+});
+
+app.get('/users', function(req, res) {
+	db.all(`SELECT * FROM users`, function(err, data) {
+		if(!err) {
+			res.send(data);
+			return;
+		}
+	});
 });
 
 server.listen(8080);
