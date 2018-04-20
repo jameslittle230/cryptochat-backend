@@ -4,6 +4,16 @@ const server = require('http').createServer(app);
 const io = require('socket.io').listen(server);
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
+const NodeRSA = require('node-rsa');
+
+var generateKeys = function() {
+	var key = new NodeRSA();
+	key.generateKeyPair();
+	var public = key.exportKey('public');
+	var private = key.exportKey('private');
+
+	return {"pri": private, "pub": public};
+};
 
 try {
 	fs.unlinkSync('./db/main.db');
@@ -52,16 +62,25 @@ db.serialize(function() {
 	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("maddie", "", "Maddie", "Tucker")`);
 	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("danny", "", "Danny", "Little")`);
 
+	var keys = generateKeys();
+	db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (1, "` + keys.pub + `", "` + keys.pri + `")`)
+
+	keys = generateKeys();
+	db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (2, "` + keys.pub + `", "` + keys.pri + `")`)
+
+	keys = generateKeys();
+	db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (3, "` + keys.pub + `", "` + keys.pri + `")`)
+
 	db.run(`INSERT INTO chats default values`);
 	db.run(`INSERT INTO chats default values`);
 	db.run(`INSERT INTO chats default values`);
 
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (0, 0)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 0)`);
 	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 1)`);
 	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 1)`);
 	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 2)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (0, 2)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 2)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 3)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 3)`);
 
 	db.all(`SELECT * FROM chats`, function(err, data) {
 		console.log(data);
@@ -77,7 +96,6 @@ app.use(function(req, res, next) {
 });
 
 app.get('/messages', function (req, res) {
-	console.log(req.query.recipient);
 	if(!req.query.recipient || !/^\d+$/.test(req.query.recipient)) {
 		res.send("recipient error");
 		return;
@@ -86,7 +104,6 @@ app.get('/messages', function (req, res) {
 	var r_id = req.query.recipient;
 	db.all(`SELECT * FROM messages WHERE recipient_id = ` + r_id, function(err, data) {
 		if(!err) {
-			console.log(data);
 			res.send(data);
 			return;
 		}
@@ -97,6 +114,36 @@ app.get('/users', function(req, res) {
 	db.all(`SELECT * FROM users`, function(err, data) {
 		if(!err) {
 			res.send(data);
+			return;
+		}
+	});
+});
+
+app.get('/publicKey', function(req, res) {
+	if(!req.query.user_id || !/^\d+$/.test(req.query.user_id)) {
+		res.send("user id error");
+		return;
+	}
+
+	var u_id = req.query.user_id;
+	db.get(`SELECT public_key FROM keys WHERE user_id = ` + u_id + ` LIMIT 1`, function(err, data) {
+		if(!err) {
+			res.send(data.public_key);
+			return;
+		}
+	});
+});
+
+app.get('/privateKey', function(req, res) {
+	if(!req.query.user_id || !/^\d+$/.test(req.query.user_id)) {
+		res.send("user id error");
+		return;
+	}
+
+	var u_id = req.query.user_id;
+	db.get(`SELECT private_key_enc FROM keys WHERE user_id = ` + u_id + ` LIMIT 1`, function(err, data) {
+		if(!err) {
+			res.send(data.private_key_enc);
 			return;
 		}
 	});
