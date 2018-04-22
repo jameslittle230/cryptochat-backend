@@ -8,7 +8,7 @@ const NodeRSA = require('node-rsa');
 
 var generateKeys = function() {
 	var key = new NodeRSA();
-	key.generateKeyPair();
+	key.generateKeyPair(1024);
 	var public = key.exportKey('public');
 	var private = key.exportKey('private');
 
@@ -74,6 +74,7 @@ db.serialize(function() {
 	db.run(`INSERT INTO chats default values`);
 	db.run(`INSERT INTO chats default values`);
 	db.run(`INSERT INTO chats default values`);
+	db.run(`INSERT INTO chats default values`);
 
 	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 1)`);
 	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 1)`);
@@ -81,6 +82,9 @@ db.serialize(function() {
 	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 2)`);
 	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 3)`);
 	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 3)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 4)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 4)`);
+	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 4)`);
 
 	db.all(`SELECT * FROM chats`, function(err, data) {
 		console.log(data);
@@ -117,6 +121,49 @@ app.get('/users', function(req, res) {
 			return;
 		}
 	});
+});
+
+app.get('/chats', function(req, res) {
+	if(!req.query.user_id || !/^\d+$/.test(req.query.user_id)) {
+		res.send("user id error");
+		return;
+	}
+
+	var chats = [];
+
+	var u_id = req.query.user_id;
+	db.serialize(function() {
+		db.all(`SELECT * FROM chats WHERE chat_id IN (SELECT chat_id FROM user_chat WHERE user_id IS ` + u_id + `)`, function(err, data) {
+			if(err) {
+				res.send(err);
+				return;
+			}
+
+			chats = data;
+
+			db.serialize(function() {
+				var chatsProcessed = 0;
+				for (let chat of chats) {
+					db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN (SELECT user_id FROM user_chat WHERE chat_id IS ` + chat.chat_id + `)`, function(err, data) {
+						if(err) {
+							res.send(err);
+							return;
+						}
+
+						chat.members = data;
+						chatsProcessed++;
+						if(chatsProcessed == chats.length) {
+							res.send(chats);
+							return;
+						}
+					});
+				};
+			});
+		});
+	});
+
+	// res.send(chats);
+	// return;
 });
 
 app.get('/publicKey', function(req, res) {
