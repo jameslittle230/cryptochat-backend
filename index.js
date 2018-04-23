@@ -28,7 +28,7 @@ db.serialize(function() {
 
 	db.run(`CREATE TABLE if not exists messages (
 			message_id   INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-			content      BLOB    NOT NULL,
+			content      TEXT    NOT NULL,
 			sender_id    INTEGER NOT NULL,
 			recipient_id INTEGER NOT NULL,
 			chat_id      INTEGER NOT NULL,
@@ -131,6 +131,25 @@ app.get('/chats', function(req, res) {
 
 	var chats = [];
 
+	function getUsersInChats() {
+		var chatsProcessed = 0;
+		for (let chat of chats) {
+			db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN (SELECT user_id FROM user_chat WHERE chat_id IS ` + chat.chat_id + `)`, function(err, data) {
+				if(err) {
+					res.send(err);
+					return;
+				}
+
+				chat.members = data;
+				chatsProcessed++;
+				if(chatsProcessed == chats.length) {
+					res.send(chats);
+					return;
+				}
+			});
+		};
+	};
+
 	var u_id = req.query.user_id;
 	db.serialize(function() {
 		db.all(`SELECT * FROM chats WHERE chat_id IN (SELECT chat_id FROM user_chat WHERE user_id IS ` + u_id + `)`, function(err, data) {
@@ -141,29 +160,9 @@ app.get('/chats', function(req, res) {
 
 			chats = data;
 
-			db.serialize(function() {
-				var chatsProcessed = 0;
-				for (let chat of chats) {
-					db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN (SELECT user_id FROM user_chat WHERE chat_id IS ` + chat.chat_id + `)`, function(err, data) {
-						if(err) {
-							res.send(err);
-							return;
-						}
-
-						chat.members = data;
-						chatsProcessed++;
-						if(chatsProcessed == chats.length) {
-							res.send(chats);
-							return;
-						}
-					});
-				};
-			});
+			db.serialize(getUsersInChats);
 		});
 	});
-
-	// res.send(chats);
-	// return;
 });
 
 app.get('/publicKey', function(req, res) {
@@ -198,11 +197,63 @@ app.get('/privateKey', function(req, res) {
 
 server.listen(8080);
 
+var connections = {};
+
+function parseMessage(msg) {
+	var version = msg.substring(0, 4);
+	var type, len, seq_num, snd, rcv, cht, timestamp;
+
+	if(version == "0001") {
+		type = msg.substring(4, 6);
+		len = parseInt(msg.substring(6, 14), 16);
+		seq_num = parseInt(msg.substring(14, 22), 16);
+		snd = parseInt(msg.substring(22, 26), 16);
+		rcv = parseInt(msg.substring(26, 30), 16);
+		cht = parseInt(msg.substring(30, 34), 16);
+		timestamp = parseInt(msg.substring(34, 46), 16);
+	}
+
+	return {
+		type: type,
+		len: len,
+		seq_num: seq_num,
+		snd: snd,
+		rcv: rcv,
+		cht: cht,
+		timestamp: timestamp,
+		content: msg
+	};
+}
+
+function getSocketID(user_id) {
+	Object.prototype.getKeyByValue = function( value ) {
+		for( var prop in this ) {
+			if( this.hasOwnProperty( prop ) ) {
+				if( this[ prop ] === value ) return prop;
+			}
+		}
+	}
+
+	var socketID = connections.getKeyByValue(user_id);
+	return socketID;
+}
+
 io.on('connection', function(socket){
 	console.log('Connection ' + socket.id + ' began');
+	connections[socket.id] = 0;
 
 	socket.on('disconnect', function(){
+		delete connections[socket.id];
 		console.log('Connection ' + socket.id + ' ended');
+		console.log(connections);
+	});
+
+	socket.on('login', function(msg) {
+		if(connections[socket.id] === 0) {
+			connections[socket.id] = msg;
+		}
+
+		console.log(connections);
 	});
 
 	socket.on('msg', function(msg){
@@ -212,11 +263,18 @@ io.on('connection', function(socket){
 
 		console.log('message: ' + msg);
 
+		msg = parseMessage(msg);
+
 		db.serialize(function() {
 			db.run(`INSERT INTO messages (content, sender_id, recipient_id, chat_id) 
-				                  values ("` + msg + `", 1, 2, 1)`);
+								  values ("` + msg.content + `", ` + msg.snd + `, ` + msg.rcv + `, ` + msg.cht + `)`);
 		});
 
-		io.emit('msg', msg);
+		var socketID = getSocketID(msg.rcv);
+
+		if(socketID != undefined) {
+			console.log("Sending message to socketid", getSocketID(msg.rcv));
+			io.to(getSocketID(msg.rcv)).emit('msg', msg.content);
+		}
 	});
 });
