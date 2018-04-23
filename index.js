@@ -199,10 +199,10 @@ app.get('/privateKey', function(req, res) {
 server.listen(8080);
 
 io.on('connection', function(socket){
-	console.log('A user connected');
+	console.log('Connection ' + socket.id + ' began');
 
 	socket.on('disconnect', function(){
-		console.log('A user disconnected');
+		console.log('Connection ' + socket.id + ' ended');
 	});
 
 	socket.on('msg', function(msg){
