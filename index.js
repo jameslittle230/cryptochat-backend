@@ -222,6 +222,34 @@ app.post('/login', function(req, res) {
 	});
 });
 
+app.post('/createUser', function(req, res) {
+	if(!req.body.username || !/^[0-9A-Za-z_\-\.]+$/.test(req.body.username)) {
+		res.send("username error");
+		return;
+	}
+
+	var first = req.body.first.match(/[0-9A-Za-z]+/g).join('');
+	var last  =  req.body.last.match(/[0-9A-Za-z]+/g).join('');
+
+	var username = req.body.username;
+	var plaintextPassword = req.body.password;
+
+	db.get(`SELECT password FROM users WHERE username = "` + username + `" LIMIT 1`, function(err, data) {
+		if(err) {res.send("db error"); return;}
+		if(data) {res.send("user already exists"); return;}
+
+		bcrypt.hash(plaintextPassword, bcryptSaltRounds, function(err, hash) {
+			if(err) {res.send("hash error"); return;}
+
+			db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES
+				("` + username + `", "` + hash + `", "` + first + `", "` + last + `")`, function(err) {
+					if(err) {res.send(err); return;}
+					res.send(true); return;
+			});
+		});
+	});
+});
+
 server.listen(8080);
 
 var connections = {};
