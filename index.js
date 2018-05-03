@@ -108,32 +108,26 @@ app.use(bodyParser.json());
 
 app.get('/messages', function (req, res) {
 	if(!req.query.recipient || !/^\d+$/.test(req.query.recipient)) {
-		res.send("recipient error");
-		return;
+		return res.status(404).send("recipient error");
 	}
 
 	var r_id = req.query.recipient;
 	db.all(`SELECT * FROM messages WHERE recipient_id = ` + r_id, function(err, data) {
-		if(!err) {
-			res.send(data);
-			return;
-		}
+		if(err) return res.status(404).send(err);
+		return res.send(data);
 	});
 });
 
 app.get('/users', function(req, res) {
 	db.all(`SELECT * FROM users`, function(err, data) {
-		if(!err) {
-			res.send(data);
-			return;
-		}
+		if(err) return res.status(404).send(err);
+		return res.send(data);
 	});
 });
 
 app.get('/chats', function(req, res) {
 	if(!req.query.user_id || !/^\d+$/.test(req.query.user_id)) {
-		res.send("user id error");
-		return;
+		return res.status(404).send("user id error");
 	}
 
 	var chats = [];
@@ -142,10 +136,7 @@ app.get('/chats', function(req, res) {
 		var chatsProcessed = 0;
 		for (let chat of chats) {
 			db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN (SELECT user_id FROM user_chat WHERE chat_id IS ` + chat.chat_id + `)`, function(err, data) {
-				if(err) {
-					res.send(err);
-					return;
-				}
+				if(err) return res.status(404).send(err);
 
 				chat.members = data;
 				chatsProcessed++;
@@ -160,13 +151,9 @@ app.get('/chats', function(req, res) {
 	var u_id = req.query.user_id;
 	db.serialize(function() {
 		db.all(`SELECT * FROM chats WHERE chat_id IN (SELECT chat_id FROM user_chat WHERE user_id IS ` + u_id + `)`, function(err, data) {
-			if(err) {
-				res.send(err);
-				return;
-			}
+			if(err) return res.status(404).send(err);
 
 			chats = data;
-
 			db.serialize(getUsersInChats);
 		});
 	});
@@ -174,58 +161,50 @@ app.get('/chats', function(req, res) {
 
 app.get('/publicKey', function(req, res) {
 	if(!req.query.user_id || !/^\d+$/.test(req.query.user_id)) {
-		res.send("user id error");
-		return;
+		return res.status(404).send("user id error");
 	}
 
 	var u_id = req.query.user_id;
 	db.get(`SELECT public_key FROM keys WHERE user_id = ` + u_id + ` LIMIT 1`, function(err, data) {
-		if(!err) {
-			res.send(data.public_key);
-			return;
-		}
+		if(err) return res.status(404).send(err);
+		return res.send(data.public_key);
 	});
 });
 
 app.get('/privateKey', function(req, res) {
 	if(!req.query.user_id || !/^\d+$/.test(req.query.user_id)) {
-		res.send("user id error");
-		return;
+		return res.status(404).send("user id error");
 	}
 
 	var u_id = req.query.user_id;
 	db.get(`SELECT private_key_enc FROM keys WHERE user_id = ` + u_id + ` LIMIT 1`, function(err, data) {
-		if(!err) {
-			res.send(data.private_key_enc);
-			return;
-		}
+		if(err) return res.status(404).send(err);
+		return res.send(data.private_key_enc);
 	});
 });
 
 app.post('/login', function(req, res) {
 	if(!req.body.username || !/^[0-9A-Za-z_\-\.]+$/.test(req.body.username)) {
-		res.send("username error");
-		return;
+		return res.status(404).send("username error");
 	}
 
 	var username = req.body.username;
 	var plaintextPassword = req.body.password;
 	db.get(`SELECT password FROM users WHERE username = "` + username + `" LIMIT 1`, function(err, data) {
-		if(err) {res.send("db error"); return;}
-		if(!data || !data.password) {res.send("no such entry"); return;}
+		if(err) return res.status(404).send("db error");
+		if(!data || !data.password) return res.send("no such entry");
 
 		var hash = data.password;
 		bcrypt.compare(plaintextPassword, hash, function(err, valid) {
-			if(err) {res.send("hash error"); return;}
-			res.send(valid);
+			if(err) return res.status(500).send("hash error");
+			return res.send(valid);
 		});
 	});
 });
 
 app.post('/createUser', function(req, res) {
 	if(!req.body.username || !/^[0-9A-Za-z_\-\.]+$/.test(req.body.username)) {
-		res.send("username error");
-		return;
+		return res.status(404).send("username error");
 	}
 
 	var first = req.body.first.match(/[0-9A-Za-z]+/g).join('');
@@ -235,16 +214,16 @@ app.post('/createUser', function(req, res) {
 	var plaintextPassword = req.body.password;
 
 	db.get(`SELECT password FROM users WHERE username = "` + username + `" LIMIT 1`, function(err, data) {
-		if(err) {res.send("db error"); return;}
-		if(data) {res.send("user already exists"); return;}
+		if(err) return res.send("db error");
+		if(data) return res.send("user already exists");
 
 		bcrypt.hash(plaintextPassword, bcryptSaltRounds, function(err, hash) {
-			if(err) {res.send("hash error"); return;}
+			if(err) return res.send("hash error");
 
 			db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES
-				("` + username + `", "` + hash + `", "` + first + `", "` + last + `")`, function(err) {
-					if(err) {res.send(err); return;}
-					res.send(true); return;
+			("` + username + `", "` + hash + `", "` + first + `", "` + last + `")`, function(err) {
+				if(err) return res.send(err);
+				return res.send(true);
 			});
 		});
 	});
