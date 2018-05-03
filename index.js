@@ -1,10 +1,14 @@
-const express = require('express')
-const app = express()
-const server = require('http').createServer(app);
-const io = require('socket.io').listen(server);
-const sqlite3 = require('sqlite3').verbose();
-const fs = require('fs');
-const NodeRSA = require('node-rsa');
+const express    = require('express')
+const app        = express()
+const server     = require('http').createServer(app);
+const io         = require('socket.io').listen(server);
+const sqlite3    = require('sqlite3').verbose();
+const fs         = require('fs');
+const NodeRSA    = require('node-rsa');
+const bodyParser = require('body-parser');
+const bcrypt     = require('bcrypt');
+
+const bcryptSaltRounds = 10;
 
 var generateKeys = function() {
 	var key = new NodeRSA();
@@ -58,7 +62,7 @@ db.serialize(function() {
 			created_at      TEXT    NOT NULL    DEFAULT CURRENT_TIMESTAMP,
 			expired_at      TEXT)`);
 
-	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("james", "", "James", "Little")`);
+	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("james", "$2b$10$wmAP/a1G7LTzz8iIkHTF/.xhkLpfV/lDok88oHLdw435bMzkw2/s.", "James", "Little")`);
 	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("maddie", "", "Maddie", "Tucker")`);
 	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("danny", "", "Danny", "Little")`);
 
@@ -98,6 +102,9 @@ app.use(function(req, res, next) {
   res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   next();
 });
+
+app.use(bodyParser.urlencoded({extended:false}));
+app.use(bodyParser.json());
 
 app.get('/messages', function (req, res) {
 	if(!req.query.recipient || !/^\d+$/.test(req.query.recipient)) {
@@ -192,6 +199,26 @@ app.get('/privateKey', function(req, res) {
 			res.send(data.private_key_enc);
 			return;
 		}
+	});
+});
+
+app.post('/login', function(req, res) {
+	if(!req.body.username || !/^[0-9A-Za-z_\-\.]+$/.test(req.body.username)) {
+		res.send("username error");
+		return;
+	}
+
+	var username = req.body.username;
+	var plaintextPassword = req.body.password;
+	db.get(`SELECT password FROM users WHERE username = "` + username + `" LIMIT 1`, function(err, data) {
+		if(err) {res.send("db error"); return;}
+		if(!data || !data.password) {res.send("no such entry"); return;}
+
+		var hash = data.password;
+		bcrypt.compare(plaintextPassword, hash, function(err, valid) {
+			if(err) {res.send("hash error"); return;}
+			res.send(valid);
+		});
 	});
 });
 
