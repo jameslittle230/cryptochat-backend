@@ -10,13 +10,17 @@ const bcrypt     = require('bcrypt');
 
 const bcryptSaltRounds = 10;
 
-var generateKeys = function() {
+var updateUserKeypair = function(u_id, callback) {
 	var key = new NodeRSA();
 	key.generateKeyPair(1024);
 	var public = key.exportKey('public');
 	var private = key.exportKey('private');
 
-	return {"pri": private, "pub": public};
+	db.serialize(function() {
+		db.run(`UPDATE keys SET expired_at = datetime('now') WHERE expired_at IS NULL AND user_id = ` + u_id);
+		db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) 
+			VALUES (` + u_id + `, "` + public + `", "` + private + `")`, callback);
+	})
 };
 
 try {
@@ -60,20 +64,7 @@ db.serialize(function() {
 			public_key      BLOB    NOT NULL,
 			private_key_enc BLOB    NOT NULL,
 			created_at      TEXT    NOT NULL    DEFAULT CURRENT_TIMESTAMP,
-			expired_at      TEXT)`);
-
-	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("james", "$2b$10$wmAP/a1G7LTzz8iIkHTF/.xhkLpfV/lDok88oHLdw435bMzkw2/s.", "James", "Little")`);
-	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("maddie", "", "Maddie", "Tucker")`);
-	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("danny", "", "Danny", "Little")`);
-
-	var keys = generateKeys();
-	db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (1, "` + keys.pub + `", "` + keys.pri + `")`)
-
-	keys = generateKeys();
-	db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (2, "` + keys.pub + `", "` + keys.pri + `")`)
-
-	keys = generateKeys();
-	db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (3, "` + keys.pub + `", "` + keys.pri + `")`)
+			expired_at      TEXT	DEFAULT NULL)`);
 
 	db.run(`INSERT INTO chats default values`);
 	db.run(`INSERT INTO chats default values`);
@@ -190,14 +181,17 @@ app.post('/login', function(req, res) {
 
 	var username = req.body.username;
 	var plaintextPassword = req.body.password;
-	db.get(`SELECT password FROM users WHERE username = "` + username + `" LIMIT 1`, function(err, data) {
+	db.get(`SELECT password, user_id FROM users WHERE username = "` + username + `" LIMIT 1`, function(err, data) {
 		if(err) return res.status(404).send("db error");
 		if(!data || !data.password) return res.send("no such entry");
 
 		var hash = data.password;
+		var u_id = data.user_id;
 		bcrypt.compare(plaintextPassword, hash, function(err, valid) {
 			if(err) return res.status(500).send("hash error");
-			return res.send(valid);
+			updateUserKeypair(u_id, function(err, data) {
+				return res.send(valid);
+			});
 		});
 	});
 });
@@ -223,7 +217,9 @@ app.post('/createUser', function(req, res) {
 			db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES
 			("` + username + `", "` + hash + `", "` + first + `", "` + last + `")`, function(err) {
 				if(err) return res.send(err);
-				return res.send(true);
+				updateUserKeypair(this.lastID, function(err, result) {
+					return res.send(true);
+				});
 			});
 		});
 	});
