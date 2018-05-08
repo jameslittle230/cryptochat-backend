@@ -104,7 +104,7 @@ app.use(bodyParser.json());
 /** kill me now **/
 app.get('/loadUserData', function(req, res) {
 	var keys, chats, messages;
-	var u_id = 1;
+	var u_id = req.query.user_id;
 
 	db.all(`SELECT * FROM keys WHERE user_id = ` + u_id + ` OR expired_at IS NULL`, function(err, data) {
 		if(err || !data) return res.status(404).send(err || "No data found for ID");
