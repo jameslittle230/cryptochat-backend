@@ -45,6 +45,12 @@ app.get('/loadUserData', function(req, res) {
 		if(err || !data) return res.status(404).send(err || "No data found for ID");
 		keys = data;
 
+		if(req.query.keysonly) {
+			return res.send({
+				"keys": keys
+			});
+		}
+
 		db.all(`SELECT * FROM messages WHERE recipient_id = ` + u_id, function(err, data) {
 			if(err || !data) return res.status(404).send(err || "No data found for ID");
 			messages = data;
@@ -293,11 +299,14 @@ io.on('connection', function(socket){
 		let public = data.key.public;
 		let private = data.key.private;
 
+		console.log("Inserting public key", public);
+
 		db.serialize(function() {
 			db.run(`UPDATE keys SET expired_at = datetime('now') WHERE expired_at IS NULL AND user_id = ` + u_id);
 			db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) 
 				VALUES (` + u_id + `, "` + public + `", "` + private + `")`, function() {
 					io.to(s_id).emit('key-response', {success: true});
+					socket.broadcast.emit('key-reload', {success: true});
 				});
 		});
 	})
