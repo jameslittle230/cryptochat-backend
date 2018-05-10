@@ -23,72 +23,7 @@ var updateUserKeypair = function(u_id, callback) {
 	})
 };
 
-try {
-	fs.unlinkSync('./db/main.db');
-	console.log('successfully deleted old database file');
-} catch (err) {
-	console.log('Could not delete old database file... did it exist?')
-}
-
 var db = new sqlite3.Database('./db/main.db');
-
-db.serialize(function() {
-
-	db.run(`CREATE TABLE if not exists messages (
-			message_id   INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-			content      TEXT    NOT NULL,
-			sender_id    INTEGER NOT NULL,
-			recipient_id INTEGER NOT NULL,
-			chat_id      INTEGER NOT NULL,
-			created_at   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
-
-	db.run(`CREATE TABLE if not exists chats (
-			chat_id         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-			sequence_number INTEGER DEFAULT 0   NOT NULL)`);
-
-	db.run(`CREATE TABLE if not exists user_chat (
-			user_chat_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-			user_id      INTEGER NOT NULL,
-			chat_id      INTEGER NOT NULL)`);
-
-	db.run(`CREATE TABLE if not exists users (
-			user_id    INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-			username   TEXT    NOT NULL,
-			password   TEXT    NOT NULL,
-			first_name TEXT    NOT NULL,
-			last_name  TEXT    NOT NULL)`);
-
-	db.run(`CREATE TABLE if not exists keys (
-			key_id          INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-			user_id         INTEGER NOT NULL,
-			public_key      BLOB    NOT NULL,
-			private_key_enc BLOB    NOT NULL,
-			created_at      TEXT    NOT NULL    DEFAULT CURRENT_TIMESTAMP,
-			expired_at      TEXT	DEFAULT NULL)`);
-
-	db.run(`INSERT INTO chats default values`);
-	db.run(`INSERT INTO chats default values`);
-	db.run(`INSERT INTO chats default values`);
-	db.run(`INSERT INTO chats default values`);
-
-	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("jameslittle", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "James", "Little")`);
-	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("maddie", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "Maddie", "Tucker")`);
-	db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("danny", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "Danny", "Little")`);
-
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 1)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 1)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 2)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 2)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 3)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 3)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 4)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 4)`);
-	db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 4)`);
-
-	db.all(`SELECT * FROM chats`, function(err, data) {
-		console.log(data);
-	});
-});
 
 // API Endpoints
 
@@ -208,7 +143,75 @@ app.post('/createUser', function(req, res) {
 	});
 });
 
-app.post('/')
+app.get('/resetDatabase', function(req, res) {
+	connections = {};
+	db = null;
+
+	try {
+		fs.unlinkSync('./db/main.db');
+		console.log('successfully deleted old database file');
+	} catch (err) {
+		console.log('Could not delete old database file... did it exist?')
+	}
+
+	db = new sqlite3.Database('./db/main.db');
+
+	db.serialize(function() {
+
+		db.run(`CREATE TABLE if not exists messages (
+				message_id   INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				content      TEXT    NOT NULL,
+				sender_id    INTEGER NOT NULL,
+				recipient_id INTEGER NOT NULL,
+				chat_id      INTEGER NOT NULL,
+				created_at   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+
+		db.run(`CREATE TABLE if not exists chats (
+				chat_id         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				sequence_number INTEGER DEFAULT 0   NOT NULL)`);
+
+		db.run(`CREATE TABLE if not exists user_chat (
+				user_chat_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				user_id      INTEGER NOT NULL,
+				chat_id      INTEGER NOT NULL)`);
+
+		db.run(`CREATE TABLE if not exists users (
+				user_id    INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				username   TEXT    NOT NULL,
+				password   TEXT    NOT NULL,
+				first_name TEXT    NOT NULL,
+				last_name  TEXT    NOT NULL)`);
+
+		db.run(`CREATE TABLE if not exists keys (
+				key_id          INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				user_id         INTEGER NOT NULL,
+				public_key      BLOB    NOT NULL,
+				private_key_enc BLOB    NOT NULL,
+				created_at      TEXT    NOT NULL    DEFAULT CURRENT_TIMESTAMP,
+				expired_at      TEXT	DEFAULT NULL)`);
+
+		db.run(`INSERT INTO chats default values`);
+		db.run(`INSERT INTO chats default values`);
+		db.run(`INSERT INTO chats default values`);
+		db.run(`INSERT INTO chats default values`);
+
+		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("jameslittle", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "James", "Little")`);
+		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("maddie", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "Maddie", "Tucker")`);
+		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("danny", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "Danny", "Little")`);
+
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 1)`);
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 1)`);
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 2)`);
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 2)`);
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 3)`);
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 3)`);
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 4)`);
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 4)`);
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 4)`);
+	});
+
+	return res.send(true);
+})
 
 server.listen(8080);
 
@@ -271,17 +274,20 @@ io.on('connection', function(socket){
 								  values ("` + msg.content + `", ` + msg.snd + `, ` + msg.rcv + `, ` + msg.cht + `)`);
 		});
 
+		console.log(connections);
 
 		if(connections[msg.rcv]) {
-			for (socket_id in connections[msg.rcv]) {
-				console.log("Sending message to socketid", socket_id);
-				io.to(socket_id).emit('msg', msg.content);
+			console.log(connections[msg.rcv].length)
+
+			for(var i=0; i<connections[msg.rcv].length; i++) {
+				var socketid = connections[msg.rcv][i];
+				console.log("Sending message to socketid", socketid);
+				io.to(socketid).emit('msg', msg.content);
 			}
 		}
 	});
 
 	socket.on('key-submit', function(data) {
-		console.log(data);
 		let s_id = data.socket_id;
 		let u_id = data.user_id;
 		let public = data.key.public;
@@ -291,7 +297,6 @@ io.on('connection', function(socket){
 			db.run(`UPDATE keys SET expired_at = datetime('now') WHERE expired_at IS NULL AND user_id = ` + u_id);
 			db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) 
 				VALUES (` + u_id + `, "` + public + `", "` + private + `")`, function() {
-					console.log("Done with database stuff")
 					io.to(s_id).emit('key-response', {success: true});
 				});
 		});
