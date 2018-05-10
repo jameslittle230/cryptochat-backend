@@ -47,7 +47,7 @@ $ npm install -g forever
 Then, you can start the server by running
 
 ~~~
-$ forever nodejs index.js
+$ forever start index.js
 ~~~
 
 Whenever you pull new changes, you can run
