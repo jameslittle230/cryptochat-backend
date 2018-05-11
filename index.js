@@ -38,7 +38,7 @@ app.use(bodyParser.json());
 
 /** kill me now **/
 app.get('/loadUserData', function(req, res) {
-	var keys, chats, messages;
+	var keys, chats, messages, users;
 	var u_id = req.query.user_id;
 
 	db.all(`SELECT * FROM keys WHERE user_id = ` + u_id + ` OR expired_at IS NULL`, function(err, data) {
@@ -55,29 +55,35 @@ app.get('/loadUserData', function(req, res) {
 			if(err || !data) return res.status(404).send(err || "No data found for ID");
 			messages = data;
 
-			db.all(`SELECT * FROM chats WHERE chat_id IN (SELECT chat_id FROM user_chat WHERE user_id IS ` + u_id + `)`, function(err, data) {
+			db.all(`SELECT user_id, username, first_name, last_name FROM users`, function(err, data) {
 				if(err || !data) return res.status(404).send(err || "No data found for ID");
-				chats = data;
-				var chatsProcessed = 0;
+				users = data
 
-				db.serialize(function() {
-					for (let chat of chats) {
-						db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN 
-						(SELECT user_id FROM user_chat WHERE chat_id IS ` + chat.chat_id + `)`, 
-						function(err, data) {
-							if(err) return res.status(404).send(err);
+				db.all(`SELECT * FROM chats WHERE chat_id IN (SELECT chat_id FROM user_chat WHERE user_id IS ` + u_id + `)`, function(err, data) {
+					if(err || !data) return res.status(404).send(err || "No data found for ID");
+					chats = data;
+					var chatsProcessed = 0;
 
-							chat.members = data;
-							chatsProcessed++;
-							if(chatsProcessed == chats.length) {
-								return res.send({
-									"keys": keys,
-									"messages": messages,
-									"chats": chats
-								});
-							}
-						});
-					};
+					db.serialize(function() {
+						for (let chat of chats) {
+							db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN 
+							(SELECT user_id FROM user_chat WHERE chat_id IS ` + chat.chat_id + `)`, 
+							function(err, data) {
+								if(err) return res.status(404).send(err);
+
+								chat.members = data;
+								chatsProcessed++;
+								if(chatsProcessed == chats.length) {
+									return res.send({
+										"keys": keys,
+										"messages": messages,
+										"chats": chats,
+										"users": users
+									});
+								}
+							});
+						};
+					});
 				});
 			});
 		});
@@ -110,7 +116,7 @@ app.post('/login', function(req, res) {
 				connections[u_id] = [socket_id];
 			}
 
-			console.log(connections);
+			// console.log(connections);
 
 			return res.send({
 				success: true,
@@ -155,9 +161,9 @@ app.get('/resetDatabase', function(req, res) {
 
 	try {
 		fs.unlinkSync('./db/main.db');
-		console.log('successfully deleted old database file');
+		// console.log('successfully deleted old database file');
 	} catch (err) {
-		console.log('Could not delete old database file... did it exist?')
+		// console.log('Could not delete old database file... did it exist?')
 	}
 
 	db = new sqlite3.Database('./db/main.db');
@@ -221,6 +227,8 @@ app.get('/resetDatabase', function(req, res) {
 
 server.listen(8080);
 
+console.log("Server started");
+
 var connections = {};
 
 function parseMessage(msg) {
@@ -250,10 +258,10 @@ function parseMessage(msg) {
 }
 
 io.on('connection', function(socket){
-	console.log('Connection ' + socket.id + ' began');
+	// console.log('Connection ' + socket.id + ' began');
 
 	socket.on('disconnect', function(){
-		console.log('Connection ' + socket.id + ' ended :(');
+		// console.log('Connection ' + socket.id + ' ended :(');
 		for(user_id in connections) {
 			if (connections[user_id].indexOf(socket.id) != -1) {
 				connections[user_id].splice(connections[user_id].indexOf(socket.id), 1);
@@ -263,7 +271,7 @@ io.on('connection', function(socket){
 				}
 			}
 		}
-		console.log(connections);
+		// console.log(connections);
 	});
 
 	socket.on('msg', function(msg){
@@ -271,7 +279,7 @@ io.on('connection', function(socket){
 			return;
 		}
 
-		console.log('message: ' + msg);
+		// console.log('message: ' + msg);
 
 		msg = parseMessage(msg);
 
@@ -280,14 +288,14 @@ io.on('connection', function(socket){
 								  values ("` + msg.content + `", ` + msg.snd + `, ` + msg.rcv + `, ` + msg.cht + `)`);
 		});
 
-		console.log(connections);
+		// console.log(connections);
 
 		if(connections[msg.rcv]) {
-			console.log(connections[msg.rcv].length)
+			// console.log(connections[msg.rcv].length)
 
 			for(var i=0; i<connections[msg.rcv].length; i++) {
 				var socketid = connections[msg.rcv][i];
-				console.log("Sending message to socketid", socketid);
+				// console.log("Sending message to socketid", socketid);
 				io.to(socketid).emit('msg', msg.content);
 			}
 		}
@@ -299,7 +307,7 @@ io.on('connection', function(socket){
 		let public = data.key.public;
 		let private = data.key.private;
 
-		console.log("Inserting public key", public);
+		// console.log("Inserting public key", public);
 
 		db.serialize(function() {
 			db.run(`UPDATE keys SET expired_at = datetime('now') WHERE expired_at IS NULL AND user_id = ` + u_id);
