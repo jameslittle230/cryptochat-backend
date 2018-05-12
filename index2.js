@@ -59,6 +59,34 @@ async function getAllUsers() {
 	return users;
 }
 
+async function getKeysForUser(user_id) {
+	const keys = await db.all(`SELECT * FROM keys WHERE user_id = ? OR expired_at IS NULL`, [user_id]);
+	return keys;
+}
+
+async function getMessagesForUser(user_id) {
+	const messages = await db.all(`SELECT * FROM messages WHERE recipient_id = ?`, [user_id]);
+	return messages;
+}
+
+async function getChatsForUser(user_id) {
+	try {
+		var chats = await db.all(`SELECT * FROM chats WHERE chat_id IN 
+			(SELECT chat_id FROM user_chat WHERE user_id IS ?)`, [user_id]);
+
+		for (let chat of chats) {
+			const members = await db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN 
+				(SELECT user_id FROM user_chat WHERE chat_id IS ?)`, [chat.chat_id]);
+
+			chat.members = members;
+		}
+
+		return chats;
+	} catch(error) {
+		return error;
+	}
+}
+
 /** Update Keypair **/
 
 async function updateUserKeypair(user_id) {
@@ -163,6 +191,23 @@ function testRequestParameter(param, regex = /(.*?)/) {
 	return true;
 }
 
+/** Authentication Testing **/
+
+function userNotAuthenticatedError() {
+	return {
+		error: true,
+		message: "Trying to access data from a socket that doesn't match connection data"
+	}
+}
+
+function authenticateUser(user_id, req) {
+	if(!connections[user_id] || !req.headers.socket_id in connections[user_id]) {
+		throw new userNotAuthenticatedError();
+	}
+
+	return true;
+}
+
 /** Login Endpoint **/
 
 function loginPasswordMismatchException() {
@@ -258,6 +303,52 @@ app.post('/register', async function(req, res) {
 	}
 });
 
+/** Load Data Endpoint **/
+
+app.get('/loadData', async function(req, res) {
+	try {
+		testRequestParameter(req.query.user_id, /^[0-9]+$/);
+		const user_id = req.query.user_id;
+		authenticateUser(req.query.user_id, req);
+
+		var output = {}
+
+		var noInputsSpecified = !req.query.keys && !req.query.chats && !req.query.messages && !req.query.users;
+
+		if(req.query.keys || noInputsSpecified)     output["keys"]     = await getKeysForUser(user_id);
+		if(req.query.chats || noInputsSpecified)    output["chats"]    = await getChatsForUser(user_id);
+		if(req.query.messages || noInputsSpecified) output["messages"] = await getMessagesForUser(user_id);
+		if(req.query.users || noInputsSpecified)    output["users"]    = await getAllUsers();
+
+		return res.send({
+			success: true,
+			data: output
+		});
+	} catch(error) {
+		console.log(error);
+		return res.status(400).send(error);
+	}
+})
+
+/** New Chat Endpoint **/
+
+app.post('/newChat', async function(req, res) {
+	testRequestParameter(req.query.user_id, /^[0-9]+$/);
+	testRequestParameter(req.query.members);
+	const user_id = req.query.user_id;
+	authenticateUser(req.query.user_id, req);
+
+	const members = req.query.members
+
+	const newChat = await db.run(`INSERT INTO chats DEFAULT VALUES`);
+	const chat_id = newChat.lastID;
+
+	for(let member_id in members) {
+		await db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (?, ?)`, [member_id, chat_id]);
+	}
+})
+
+/** New Key Endpoint **/
 
 /** Run **/
 var dbPromise = sqlite.open('./db/main.db', { Promise });
