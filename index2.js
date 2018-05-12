@@ -47,6 +47,7 @@ function removeFromConnections(socket_id) {
 				delete connections[user_id];
 				break;
 			}
+			return user_id
 		}
 	}
 }
@@ -68,6 +69,72 @@ async function updateUserKeypair(user_id) {
 	await db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (?, ?, ?)`, 
 		[user_id, key.exportKey('public'), key.exportKey('private')]);
 };
+
+/** Handle Disconnect **/
+
+function handleDisconnect(socket_id) {
+	const user_id = removeFromConnections(socket_id);
+	if(!connections[user_id]) {
+		io.of('/').emit('user-disconnect', user_id);
+	}
+}
+
+/** Handle Message **/
+
+function parseMessage(msg) {
+	var version = msg.substring(0, 4);
+	var type, len, seq_num, snd, rcv, cht, timestamp;
+
+	if(version == "0001") {
+		type = msg.substring(4, 6);
+		len = parseInt(msg.substring(6, 14), 16);
+		seq_num = parseInt(msg.substring(14, 22), 16);
+		snd = parseInt(msg.substring(22, 26), 16);
+		rcv = parseInt(msg.substring(26, 30), 16);
+		cht = parseInt(msg.substring(30, 34), 16);
+		timestamp = parseInt(msg.substring(34, 46), 16);
+	}
+
+	return {
+		type: type,
+		len: len,
+		seq_num: seq_num,
+		snd: snd,
+		rcv: rcv,
+		cht: cht,
+		timestamp: timestamp,
+		content: msg
+	};
+}
+
+function messageNotHexadecimalException() {
+	return {
+		error: true,
+		message: "Incoming message not of hexadecimal format."
+	}
+}
+
+async function handleMessage(msg, sender_socket_id) {
+	try {
+		if(!/^[0-9a-fA-F]+$/.test(msg)) {
+			throw new messageNotHexadecimalException();
+		}
+
+		msg = parseMessage(msg);
+
+		await db.run(`INSERT INTO messages (content, sender_id, recipient_id, chat_id) values (?, ?, ?, ?)`, 
+			[msg.content, msg.snd, msg.rcv, msg.cht]);
+
+		if(connections[msg.rcv]) {
+			for(var i=0; i<connections[msg.rcv].length; i++) {
+				var socketid = connections[msg.rcv][i];
+				io.to(socketid).emit('msg', msg.content);
+			}
+		}
+	} catch(error) {
+		io.to(sender_socket_id).emit('msg-error', error);
+	}
+} 
 
 /** Request Parameter Testing **/
 
@@ -130,6 +197,10 @@ app.post('/login', async function(req, res) {
 		if(!match) throw new loginPasswordMismatchException()
 
 		addToConnections(data.user_id, req.headers.socket_id);
+
+		if(connections[data.user_id].length == 1) {
+			io.of('/').emit('user-connect', data.user_id);
+		}
 
 		return res.send({
 			success: true,
@@ -198,5 +269,5 @@ dbPromise.then((dbFromPromise) => {
 
 io.on('connection', function(socket) {
 	socket.on('disconnect', () => {handleDisconnect(socket.id)});
-	socket.on('msg', (m) => {handleIncomingMessage(m)});
+	socket.on('msg', (m) => {handleIncomingMessage(m, socket.id)});
 })
