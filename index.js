@@ -52,37 +52,46 @@ app.get('/loadUserData', function(req, res) {
 		}
 
 		db.all(`SELECT * FROM messages WHERE recipient_id = ` + u_id, function(err, data) {
-			if(err || !data) return res.status(404).send(err || "No data found for ID");
+			if(err) return res.status(404).send(err);
 			messages = data;
 
 			db.all(`SELECT user_id, username, first_name, last_name FROM users`, function(err, data) {
 				if(err || !data) return res.status(404).send(err || "No data found for ID");
-				users = data
+				users = data;
 
 				db.all(`SELECT * FROM chats WHERE chat_id IN (SELECT chat_id FROM user_chat WHERE user_id IS ` + u_id + `)`, function(err, data) {
-					if(err || !data) return res.status(404).send(err || "No data found for ID");
+					if(err) return res.status(404).send(err);
 					chats = data;
 					var chatsProcessed = 0;
 
 					db.serialize(function() {
-						for (let chat of chats) {
-							db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN 
-							(SELECT user_id FROM user_chat WHERE chat_id IS ` + chat.chat_id + `)`, 
-							function(err, data) {
-								if(err) return res.status(404).send(err);
+						if(chats.length > 0) {
+							for (let chat of chats) {
+								db.all(`SELECT user_id, first_name, last_name FROM users WHERE user_id IN 
+								(SELECT user_id FROM user_chat WHERE chat_id IS ` + chat.chat_id + `)`, 
+								function(err, data) {
+									if(err) return res.status(404).send(err);
 
-								chat.members = data;
-								chatsProcessed++;
-								if(chatsProcessed == chats.length) {
-									return res.send({
-										"keys": keys,
-										"messages": messages,
-										"chats": chats,
-										"users": users
-									});
-								}
+									chat.members = data;
+									chatsProcessed++;
+									if(chatsProcessed == chats.length) {
+										return res.send({
+											"keys": keys,
+											"messages": messages,
+											"chats": chats,
+											"users": users
+										});
+									}
+								});
+							};
+						} else {
+							return res.send({
+								"keys": keys,
+								"messages": messages,
+								"chats": chats,
+								"users": users
 							});
-						};
+						}
 					});
 				});
 			});
@@ -116,8 +125,6 @@ app.post('/login', function(req, res) {
 				connections[u_id] = [socket_id];
 			}
 
-			// console.log(connections);
-
 			return res.send({
 				success: true,
 				user: data
@@ -126,9 +133,17 @@ app.post('/login', function(req, res) {
 	});
 });
 
-app.post('/createUser', function(req, res) {
+app.post('/register', function(req, res) {
 	if(!req.body.username || !/^[0-9A-Za-z_\-\.]+$/.test(req.body.username)) {
-		return res.status(404).send("username error");
+		return res.status(404).send({success: false, errorReason: "username"});
+	}
+
+	if(req.body.password.length < 8) {
+		return res.status(404).send({success: false, errorReason: "password"});
+	}
+
+	if(req.body.first.length == 0 || req.body.last.length == 0) {
+		return res.status(404).send({success: false, errorReason: "name"});
 	}
 
 	var first = req.body.first.match(/[0-9A-Za-z]+/g).join('');
@@ -148,12 +163,23 @@ app.post('/createUser', function(req, res) {
 			("` + username + `", "` + hash + `", "` + first + `", "` + last + `")`, function(err) {
 				if(err) return res.status(500).send(err);
 				updateUserKeypair(this.lastID, function(err, result) {
-					return res.send(true);
+					db.get(`SELECT * FROM users WHERE username = "` + username + `" LIMIT 1`, function(err, singleUserData) {
+						db.all(`SELECT user_id, username, first_name, last_name FROM users`, function(err, allUsersData) {
+							if(err || !data) return res.status(404).send(err || "No data found for ID");
+							users = allUsersData;
+							socket.broadcast.emit('users-reload', {success: true});
+							return res.send({success: true, user: singleUserData});
+						});
+					});
 				});
 			});
 		});
 	});
 });
+
+app.post('/newChat', function(req, res) {
+
+})
 
 app.get('/resetDatabase', function(req, res) {
 	connections = {};
@@ -161,10 +187,7 @@ app.get('/resetDatabase', function(req, res) {
 
 	try {
 		fs.unlinkSync('./db/main.db');
-		// console.log('successfully deleted old database file');
-	} catch (err) {
-		// console.log('Could not delete old database file... did it exist?')
-	}
+	} catch (err) {console.log('Couldn\'t delete old database')}
 
 	db = new sqlite3.Database('./db/main.db');
 
