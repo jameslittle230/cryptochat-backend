@@ -20,7 +20,7 @@ function configApp(app) {
 
 	app.use(function(req, res, next) {
 		res.header("Access-Control-Allow-Origin", "*");
-		res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, socket_id");
+		res.header("Access-Control-Allow-Headers", `Origin, X-Requested-With, Content-Type, Accept, socket_id`);
 		next();
 	});
 }
@@ -41,8 +41,8 @@ function addToConnections(user_id, socket_id) {
 
 function removeFromConnections(socket_id) {
 	for(user_id in connections) {
-		if (connections[user_id].indexOf(socket.id) != -1) {
-			connections[user_id].splice(connections[user_id].indexOf(socket.id), 1);
+		if (connections[user_id].indexOf(socket_id) != -1) {
+			connections[user_id].splice(connections[user_id].indexOf(socket_id), 1);
 			if(connections[user_id].length == 0) {
 				delete connections[user_id];
 				break;
@@ -89,14 +89,11 @@ async function getChatsForUser(user_id) {
 
 /** Update Keypair **/
 
-async function updateUserKeypair(user_id) {
-	var key = new NodeRSA();
-	key.generateKeyPair(1024);
-
+async function updateKeypair(user_id, key) {
 	await db.run(`UPDATE keys SET expired_at = datetime('now') WHERE expired_at IS NULL AND user_id = ?`, [user_id]);
-	await db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (?, ?, ?)`, 
-		[user_id, key.exportKey('public'), key.exportKey('private')]);
-};
+	await db.run(`INSERT INTO keys (user_id, public_key, private_key_enc) VALUES (?, ?, ?)`, [user_id, key.public, key.private]);
+	io.of('/').emit('key-reload', {success: true});
+}
 
 /** Handle Disconnect **/
 
@@ -193,6 +190,11 @@ function testRequestParameter(param, regex = /(.*?)/) {
 
 /** Authentication Testing **/
 
+/** 
+ * I'm disabling authentication for now, since the implementation is unreliable and the
+ * point of the assignment isn't user authentication between sockets and HTTP.
+ */
+
 function userNotAuthenticatedError() {
 	return {
 		error: true,
@@ -201,9 +203,9 @@ function userNotAuthenticatedError() {
 }
 
 function authenticateUser(user_id, req) {
-	if(!connections[user_id] || !req.headers.socket_id in connections[user_id]) {
-		throw new userNotAuthenticatedError();
-	}
+	// if(!connections[user_id] || !req.headers.socket_id in connections[user_id]) {
+	// 	throw new userNotAuthenticatedError();
+	// }
 
 	return true;
 }
@@ -229,17 +231,21 @@ app.post('/login', async function(req, res) {
 	try { 
 		testRequestParameter(req.body.username, /^[0-9A-Za-z_\-\.]+$/);
 		testRequestParameter(req.body.password);
+		testRequestParameter(req.body.key);
 	}
 	catch(e) {return res.status(400).send(e) }
 
 	var username = req.body.username;
 	var plaintextPassword = req.body.password;
+	var key = req.body.key;
 
 	try {
 		const data = await db.get(`SELECT * FROM users WHERE username = ? LIMIT 1`, [username]);
 
 		const match = await bcrypt.compare(plaintextPassword, data.password);
 		if(!match) throw new loginPasswordMismatchException()
+
+		await updateKeypair(data.user_id, key);
 
 		addToConnections(data.user_id, req.headers.socket_id);
 
@@ -253,6 +259,7 @@ app.post('/login', async function(req, res) {
 		});
 
 	} catch(error) {
+		console.log(error)
 		return res.status(400).send(error);
 	}
 });
@@ -272,6 +279,7 @@ app.post('/register', async function(req, res) {
 		testRequestParameter(req.body.password, /.{8,}/);
 		testRequestParameter(req.body.first, /^[0-9A-Za-z]+$/);
 		testRequestParameter(req.body.last, /^[0-9A-Za-z]+$/);
+		testRequestParameter(req.body.key);
 	} 
 	catch(e) {return res.status(400).send(e) }
 
@@ -279,6 +287,7 @@ app.post('/register', async function(req, res) {
 	var plaintextPassword = req.body.password;
 	var first = req.body.first;
 	var last = req.body.last;
+	var key = req.body.key;
 
 	try {
 		const userSearchData = await db.get(`SELECT password FROM users WHERE username = ? LIMIT 1`, [username]);
@@ -288,12 +297,15 @@ app.post('/register', async function(req, res) {
 
 		const newUser = await db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES (?, ?, ?, ?)`, [username, passwordHash, first, last]);
 		
-		await updateUserKeypair(newUser.lastID);
+		await updateKeypair(newUser.lastID, key);
+
+		addToConnections(newUser.lastID, req.headers.socket_id);
 		
 		const singleUserData = await db.get(`SELECT * FROM users WHERE user_id = ? LIMIT 1`, [newUser.lastID]);
 		const allUsersData = await getAllUsers();
 
-		io.of('/').emit('users-reload');
+		io.of('/').emit('user-reload');
+
 		return res.send({
 			success: true,
 			user: singleUserData
@@ -301,6 +313,26 @@ app.post('/register', async function(req, res) {
 	} catch(error) {
 		return res.status(400).send(error);
 	}
+});
+
+/** New Chat Endpoint **/
+
+app.post('/newChat', async function(req, res) {
+	testRequestParameter(req.query.user_id, /^[0-9]+$/);
+	testRequestParameter(req.query.members);
+	const user_id = req.query.user_id;
+	authenticateUser(req.query.user_id, req);
+
+	const members = req.query.members
+
+	const newChat = await db.run(`INSERT INTO chats DEFAULT VALUES`);
+	const chat_id = newChat.lastID;
+
+	for(let member_id in members) {
+		await db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (?, ?)`, [member_id, chat_id]);
+	}
+
+	io.of('/').emit('chat-reload');
 });
 
 /** Load Data Endpoint **/
@@ -328,27 +360,76 @@ app.get('/loadData', async function(req, res) {
 		console.log(error);
 		return res.status(400).send(error);
 	}
+});
+
+/** Reset Database **/
+app.get('/resetDatabase', async function(req, res) {
+	connections = {};
+	db = null;
+
+	try {
+		fs.unlinkSync('./db/main.db');
+	} catch (err) {console.log('Couldn\'t delete old database')}
+
+	db = await sqlite.open('./db/main.db', { Promise });
+
+	await Promise.all([
+		db.run(`CREATE TABLE if not exists messages (
+				message_id   INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				content      TEXT    NOT NULL,
+				sender_id    INTEGER NOT NULL,
+				recipient_id INTEGER NOT NULL,
+				chat_id      INTEGER NOT NULL,
+				created_at   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP)`),
+
+		db.run(`CREATE TABLE if not exists chats (
+				chat_id         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				sequence_number INTEGER DEFAULT 0   NOT NULL)`),
+
+		db.run(`CREATE TABLE if not exists user_chat (
+				user_chat_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				user_id      INTEGER NOT NULL,
+				chat_id      INTEGER NOT NULL)`),
+
+		db.run(`CREATE TABLE if not exists users (
+				user_id    INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				username   TEXT    NOT NULL,
+				password   TEXT    NOT NULL,
+				first_name TEXT    NOT NULL,
+				last_name  TEXT    NOT NULL)`),
+
+		db.run(`CREATE TABLE if not exists keys (
+				key_id          INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+				user_id         INTEGER NOT NULL,
+				public_key      BLOB    NOT NULL,
+				private_key_enc BLOB    NOT NULL,
+				created_at      TEXT    NOT NULL    DEFAULT CURRENT_TIMESTAMP,
+				expired_at      TEXT	DEFAULT NULL)`)
+	]);
+
+	await Promise.all([
+		db.run(`INSERT INTO chats default values`),
+		db.run(`INSERT INTO chats default values`),
+		db.run(`INSERT INTO chats default values`),
+		db.run(`INSERT INTO chats default values`),
+
+		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("jameslittle", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "James", "Little")`),
+		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("maddie", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "Maddie", "Tucker")`),
+		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("danny", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "Danny", "Little")`),
+
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 1)`),
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 1)`),
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 2)`),
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 2)`),
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 3)`),
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 3)`),
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 4)`),
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 4)`),
+		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 4)`)
+	]);
+
+	return res.send(true);
 })
-
-/** New Chat Endpoint **/
-
-app.post('/newChat', async function(req, res) {
-	testRequestParameter(req.query.user_id, /^[0-9]+$/);
-	testRequestParameter(req.query.members);
-	const user_id = req.query.user_id;
-	authenticateUser(req.query.user_id, req);
-
-	const members = req.query.members
-
-	const newChat = await db.run(`INSERT INTO chats DEFAULT VALUES`);
-	const chat_id = newChat.lastID;
-
-	for(let member_id in members) {
-		await db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (?, ?)`, [member_id, chat_id]);
-	}
-})
-
-/** New Key Endpoint **/
 
 /** Run **/
 var dbPromise = sqlite.open('./db/main.db', { Promise });
