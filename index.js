@@ -135,7 +135,7 @@ function parseMessage(msg) {
 function messageNotHexadecimalException() {
 	return {
 		error: true,
-		message: "Incoming message not of hexadecimal format."
+		message: "Incoming message not a hexadecimal value."
 	}
 }
 
@@ -150,8 +150,6 @@ async function handleIncomingMessage(msg, sender_socket_id) {
 		await db.run(`INSERT INTO messages (content, sender_id, recipient_id, chat_id) values (?, ?, ?, ?)`, 
 			[msg.content, msg.snd, msg.rcv, msg.cht]);
 
-		await db.run(`UPDATE chats SET sequence_number = sequence_number + 1 WHERE chat_id = ?`, [msg.cht]);
-
 		if(connections[msg.rcv]) {
 			for(var i=0; i<connections[msg.rcv].length; i++) {
 				var socketid = connections[msg.rcv][i];
@@ -159,6 +157,7 @@ async function handleIncomingMessage(msg, sender_socket_id) {
 			}
 		}
 	} catch(error) {
+		console.log(error);
 		io.to(sender_socket_id).emit('msg-error', error);
 	}
 } 
@@ -326,18 +325,13 @@ app.post('/newChat', async function(req, res) {
 		const user_id = req.query.user_id;
 		authenticateUser(req.query.user_id, req);
 
-		console.log(req.body);
-
 		const members = JSON.parse(req.body.members);
 
 		const newChat = await db.run(`INSERT INTO chats DEFAULT VALUES`);
 		const chat_id = newChat.lastID;
 
-		console.log(chat_id, members);
-
 		for(var i=0; i<members.length; i++) {
 			var member_id = members[i];
-			console.log(member_id);
 			await db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (?, ?)`, [member_id, chat_id]);
 		}
 
