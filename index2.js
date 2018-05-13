@@ -139,7 +139,7 @@ function messageNotHexadecimalException() {
 	}
 }
 
-async function handleMessage(msg, sender_socket_id) {
+async function handleIncomingMessage(msg, sender_socket_id) {
 	try {
 		if(!/^[0-9a-fA-F]+$/.test(msg)) {
 			throw new messageNotHexadecimalException();
@@ -318,21 +318,36 @@ app.post('/register', async function(req, res) {
 /** New Chat Endpoint **/
 
 app.post('/newChat', async function(req, res) {
-	testRequestParameter(req.query.user_id, /^[0-9]+$/);
-	testRequestParameter(req.query.members);
-	const user_id = req.query.user_id;
-	authenticateUser(req.query.user_id, req);
+	try {
+		testRequestParameter(req.body.user_id, /^[0-9]+$/);
+		testRequestParameter(req.body.members);
+		const user_id = req.query.user_id;
+		authenticateUser(req.query.user_id, req);
 
-	const members = req.query.members
+		console.log(req.body);
 
-	const newChat = await db.run(`INSERT INTO chats DEFAULT VALUES`);
-	const chat_id = newChat.lastID;
+		const members = JSON.parse(req.body.members);
 
-	for(let member_id in members) {
-		await db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (?, ?)`, [member_id, chat_id]);
+		const newChat = await db.run(`INSERT INTO chats DEFAULT VALUES`);
+		const chat_id = newChat.lastID;
+
+		console.log(chat_id, members);
+
+		for(var i=0; i<members.length; i++) {
+			var member_id = members[i];
+			console.log(member_id);
+			await db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (?, ?)`, [member_id, chat_id]);
+		}
+
+		io.of('/').emit('chat-reload');
+
+		return res.send({
+			success: true,
+		});
+	} catch(error) {
+		console.log(error);
+		return res.status(400).send(error);
 	}
-
-	io.of('/').emit('chat-reload');
 });
 
 /** Load Data Endpoint **/
