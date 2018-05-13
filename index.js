@@ -60,7 +60,7 @@ async function getAllUsers() {
 }
 
 async function getKeysForUser(user_id) {
-	const keys = await db.all(`SELECT * FROM keys WHERE user_id = ? OR expired_at IS NULL`, [user_id]);
+	const keys = await db.all(`SELECT * FROM keys`);
 	return keys;
 }
 
@@ -149,6 +149,8 @@ async function handleIncomingMessage(msg, sender_socket_id) {
 
 		await db.run(`INSERT INTO messages (content, sender_id, recipient_id, chat_id) values (?, ?, ?, ?)`, 
 			[msg.content, msg.snd, msg.rcv, msg.cht]);
+
+		await db.run(`UPDATE chats SET sequence_number = sequence_number + 1 WHERE chat_id = ?`, [msg.cht]);
 
 		if(connections[msg.rcv]) {
 			for(var i=0; i<connections[msg.rcv].length; i++) {
