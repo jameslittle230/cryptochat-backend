@@ -422,27 +422,6 @@ app.get('/resetDatabase', async function(req, res) {
 				expired_at      TEXT	DEFAULT NULL)`)
 	]);
 
-	await Promise.all([
-		db.run(`INSERT INTO chats default values`),
-		db.run(`INSERT INTO chats default values`),
-		db.run(`INSERT INTO chats default values`),
-		db.run(`INSERT INTO chats default values`),
-
-		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("jameslittle", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "James", "Little")`),
-		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("maddie", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "Maddie", "Tucker")`),
-		db.run(`INSERT INTO users (username, password, first_name, last_name) VALUES ("danny", "$2b$10$poJgedWL57PEMaDHOt/MkuXJmJH4Cw1lfa5MjJitJGcaStEmRqyI2", "Danny", "Little")`),
-
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 1)`),
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 1)`),
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 2)`),
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 2)`),
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 3)`),
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 3)`),
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (1, 4)`),
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (2, 4)`),
-		db.run(`INSERT INTO user_chat (user_id, chat_id) VALUES (3, 4)`)
-	]);
-
 	return res.send(true);
 })
 
