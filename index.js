@@ -7,6 +7,9 @@ const fs         = require('fs');
 const NodeRSA    = require('node-rsa');
 const bodyParser = require('body-parser');
 const bcrypt     = require('bcrypt');
+const Entities   = require('html-entities').AllHtmlEntities;
+
+const entities = new Entities();
 
 const bcryptSaltRounds = 10;
 
@@ -178,7 +181,13 @@ function requestParameterFormatException(param) {
 	}
 }
 
-function testRequestParameter(param, regex = /(.*?)/) {	
+function testRequestParameter(param, regex = /(.*?)/, exception = null) {
+	if(exception) {
+		if(!param || !regex.test(param)) {
+			throw new exception();
+		}
+	}
+
 	if(!param) {
 		throw new requestParameterDoesNotExistException()
 	}
@@ -274,12 +283,33 @@ function registerUserAlreadyExistsException(username) {
 	}
 }
 
+function usernameDoesNotMatchRegexException(username) {
+	return {
+		error: true,
+		message: "Username must consist of letters, numbers, underscores, dashes, and periods only, and must not be blank."
+	}
+}
+
+function passwordDoesNotMatchRegexException() {
+	return {
+		error: true,
+		message: "Password must be at least 8 characters long."
+	}
+}
+
+function nameDoesNotExistException() {
+	return {
+		error: true,
+		message: "First and last name must both be present."
+	}
+}
+
 app.post('/register', async function(req, res) {
 	try { 
-		testRequestParameter(req.body.username, /^[0-9A-Za-z_\-\.]+$/);
-		testRequestParameter(req.body.password, /.{8,}/);
-		testRequestParameter(req.body.first, /^[0-9A-Za-z]+$/);
-		testRequestParameter(req.body.last, /^[0-9A-Za-z]+$/);
+		testRequestParameter(req.body.username, /^[0-9A-Za-z_\-\.]+$/, usernameDoesNotMatchRegexException);
+		testRequestParameter(req.body.password, /.{8,}/, passwordDoesNotMatchRegexException);
+		testRequestParameter(entities.encodeNonUTF(req.body.first), /(.*?)/, nameDoesNotExistException);
+		testRequestParameter(entities.encodeNonUTF(req.body.last), /(.*?)/, nameDoesNotExistException);
 		testRequestParameter(req.body.key);
 	} 
 	catch(e) {return res.status(400).send(e) }
